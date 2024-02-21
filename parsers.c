@@ -1,5 +1,6 @@
 #include "parsers.h"
 #include "file-ops.h"
+#include "opt-array.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -42,30 +43,31 @@ void set_space(char *buff) {
 	buff[1] = ' ';
 }
 
+static size_t lnsize = 6;
+static size_t ln = 1;
+static size_t space_size = 2;
+
 struct FileArray parser_n(struct FileArray farray) {
 	size_t lamount = FileArray_content_lamount(farray);
-	size_t no_nl_end_amount = FileArray_content_no_nl_end_amount(farray);
+	size_t last_noend_with_nl = farray.files[farray.amount - 1].content[farray.files[farray.amount - 1].size - 1] != '\n';
 
 	struct FileArray pfarray = {
-		.amount = (lamount + no_nl_end_amount)
+		.amount = (lamount + last_noend_with_nl)
 	};
 	pfarray.files = (struct File*)malloc(pfarray.amount * sizeof(struct File));
-
-	size_t lnsize = ln_size(lamount);
-	size_t ln = 1;
-	size_t space_size = 2;
 
 	if (lamount == 0) {
 		char *content = (char*)malloc(lnsize + space_size + farray.files[0].size);
 		set_ln(content, ln, lnsize);
-		set_space(content + space_size);
+		set_space(content + lnsize);
 
 		struct File ffile = {
-			.content = content + lnsize,
+			.content = content + lnsize + space_size,
 			.size = farray.files[0].size
 		};
 		File_cpy(ffile, farray.files[0]);
 		ffile.content = content;
+		ffile.size += lnsize + space_size;
 		pfarray.files[0] = ffile;
 
 		for (size_t i = 1; i < farray.amount; i++)
@@ -74,20 +76,41 @@ struct FileArray parser_n(struct FileArray farray) {
 	}
 
 	size_t pfarray_file_id = 0;
+	struct FileArray pre = {
+		.files = NULL,
+		.amount = 0
+	};
 	for (size_t i = 0; i < farray.amount; i++) {
 		struct File file = farray.files[i];
 		size_t prev_nl_i = -1;
 		for (size_t j = 0; j < file.size; j++) {
 			if (file.content[j] != '\n') continue;
 
+			size_t pre_size = 0;
+			if (pre.amount)
+				for (size_t k = 0; k < pre.amount; k++)
+					pre_size += pre.files[k].size;
+
 			size_t buffsize = j - prev_nl_i;
-			size_t size = buffsize + lnsize + space_size;
+			size_t size = lnsize + space_size + pre_size + buffsize;
 			char *content = (char*)malloc(size);
 			set_ln(content, ln++, lnsize);
 			set_space(content + lnsize);
 
-			char *dest = memcpy(content + lnsize + space_size, file.content + prev_nl_i + 1, buffsize);
-			if (dest != content + lnsize + space_size) {
+			char *pre_start = content + lnsize + space_size;
+			for (size_t k = 0, p_off = 0; k < pre.amount; k++) {
+				char *dest = memcpy(pre_start + p_off, pre.files[k].content, pre.files[k].size);
+				p_off += pre.files[k].size;
+			}
+			if (pre.amount) {
+				free_FileArray_files(pre);
+				pre.files = NULL;
+				pre.amount = 0;
+			}
+
+			char *buff_start = pre_start + pre_size;
+			char *dest = memcpy(buff_start, file.content + prev_nl_i + 1, buffsize);
+			if (dest != buff_start) {
 				fprintf(stderr, "memcpy failed\n");
 				exit(-1);
 			}
@@ -101,8 +124,23 @@ struct FileArray parser_n(struct FileArray farray) {
 
 		if (prev_nl_i != file.size - 1) {
 			size_t j = file.size - 1;
-
 			size_t buffsize = j - prev_nl_i;
+
+			if (i != farray.amount - 1) {
+				pre.files = realloc(pre.files, (pre.amount + 1) * sizeof(struct File));
+				char *content = (char*)malloc(buffsize);
+				char *dest = memcpy(content, file.content + prev_nl_i + 1, buffsize);
+				if (dest != content) {
+					fprintf(stderr, "memcpy failed\n");
+					exit(-1);
+				}
+				pre.files[pre.amount++] = (struct File) {
+					.content = content,
+					.size = buffsize
+				};
+				continue;
+			}
+
 			size_t size = buffsize + lnsize + space_size;
 			char *content = (char*)malloc(size);
 			set_ln(content, ln++, lnsize);
@@ -126,28 +164,25 @@ struct FileArray parser_n(struct FileArray farray) {
 
 struct FileArray parser_b(struct FileArray farray) {
 	size_t lamount = FileArray_content_lamount(farray);
-	size_t no_nl_end_amount = FileArray_content_no_nl_end_amount(farray);
+	size_t last_noend_with_nl = farray.files[farray.amount - 1].content[farray.files[farray.amount - 1].size - 1] != '\n';
 
 	struct FileArray pfarray = {
-		.amount = (lamount + no_nl_end_amount)
+		.amount = (lamount + last_noend_with_nl)
 	};
 	pfarray.files = (struct File*)malloc(pfarray.amount * sizeof(struct File));
-
-	size_t lnsize = ln_size(lamount);
-	size_t ln = 1;
-	size_t space_size = 2;
 
 	if (lamount == 0) {
 		char *content = (char*)malloc(lnsize + space_size + farray.files[0].size);
 		set_ln(content, ln, lnsize);
-		set_space(content + space_size);
+		set_space(content + lnsize);
 
 		struct File ffile = {
-			.content = content + lnsize,
+			.content = content + lnsize + space_size,
 			.size = farray.files[0].size
 		};
 		File_cpy(ffile, farray.files[0]);
 		ffile.content = content;
+		ffile.size += lnsize + space_size;
 		pfarray.files[0] = ffile;
 
 		for (size_t i = 1; i < farray.amount; i++)
@@ -156,14 +191,23 @@ struct FileArray parser_b(struct FileArray farray) {
 	}
 
 	size_t pfarray_file_id = 0;
+	struct FileArray pre = {
+		.files = NULL,
+		.amount = 0
+	};
 	for (size_t i = 0; i < farray.amount; i++) {
 		struct File file = farray.files[i];
 		size_t prev_nl_i = -1;
 		for (size_t j = 0; j < file.size; j++) {
 			if (file.content[j] != '\n') continue;
 
+			size_t pre_size = 0;
+			if (pre.amount)
+				for (size_t k = 0; k < pre.amount; k++)
+					pre_size += pre.files[k].size;
+
 			size_t buffsize = j - prev_nl_i;
-			if (buffsize == 1) {
+			if (buffsize + pre_size == 1) {
 				char *content = (char*)malloc(buffsize);
 				*content = '\n';
 
@@ -175,13 +219,25 @@ struct FileArray parser_b(struct FileArray farray) {
 				continue;
 			}
 
-			size_t size = buffsize + lnsize + space_size;
+			size_t size = lnsize + space_size + pre_size + buffsize;
 			char *content = (char*)malloc(size);
 			set_ln(content, ln++, lnsize);
 			set_space(content + lnsize);
 
-			char *dest = memcpy(content + lnsize + space_size, file.content + prev_nl_i + 1, buffsize);
-			if (dest != content + lnsize + space_size) {
+			char *pre_start = content + lnsize + space_size;
+			for (size_t k = 0, p_off = 0; k < pre.amount; k++) {
+				char *dest = memcpy(pre_start + p_off, pre.files[k].content, pre.files[k].size);
+				p_off += pre.files[k].size;
+			}
+			if (pre.amount) {
+				free_FileArray_files(pre);
+				pre.files = NULL;
+				pre.amount = 0;
+			}
+
+			char *buff_start = pre_start + pre_size;
+			char *dest = memcpy(buff_start, file.content + prev_nl_i + 1, buffsize);
+			if (dest != buff_start) {
 				fprintf(stderr, "memcpy failed\n");
 				exit(-1);
 			}
@@ -195,8 +251,23 @@ struct FileArray parser_b(struct FileArray farray) {
 
 		if (prev_nl_i != file.size - 1) {
 			size_t j = file.size - 1;
-
 			size_t buffsize = j - prev_nl_i;
+
+			if (i != farray.amount - 1) {
+				pre.files = realloc(pre.files, (pre.amount + 1) * sizeof(struct File));
+				char *content = (char*)malloc(buffsize);
+				char *dest = memcpy(content, file.content + prev_nl_i + 1, buffsize);
+				if (dest != content) {
+					fprintf(stderr, "memcpy failed\n");
+					exit(-1);
+				}
+				pre.files[pre.amount++] = (struct File) {
+					.content = content,
+					.size = buffsize
+				};
+				continue;
+			}
+
 			size_t size = buffsize + lnsize + space_size;
 			char *content = (char*)malloc(size);
 			set_ln(content, ln++, lnsize);
@@ -244,6 +315,7 @@ size_t lfcut_amount(struct FileArray farray) { // lines for cut amount
 	return amount;
 }
 
+// TODO: fix when use stdin
 struct FileArray parser_s(struct FileArray farray) {
 	size_t lamount = FileArray_content_lamount(farray) - lfcut_amount(farray);
 	size_t no_nl_end_amount = FileArray_content_no_nl_end_amount(farray);
@@ -253,8 +325,8 @@ struct FileArray parser_s(struct FileArray farray) {
 	};
 	pfarray.files = (struct File*)malloc(pfarray.amount * sizeof(struct File));
 
-	size_t lnsize = ln_size(lamount);
-	size_t ln = 1;
+	// size_t lnsize = ln_size(lamount);
+	// size_t ln = 1;
 
 	int cut = 0;
 	size_t pfarray_file_id = 0;
@@ -441,15 +513,62 @@ OptParser get_parser(int opt) {
 	}
 }
 
-struct FileArray parse(struct FileArray farray, struct OptArray opta) {
-	struct FileArray res = FileArray_dup(farray);
+typedef struct OptParsers {
+	OptParser *parsers;
+	size_t amount;
+} OptParsers;
+
+static OptParsers parsers_array = {
+	.parsers = NULL,
+	.amount = 0
+};
+
+void init_parsers(struct FileArray farray, struct OptArray opta) {
+	if (!OptArray_contain(opta, OPT_n)
+		&& !OptArray_contain(opta, OPT_b))
+		return;
+
+	size_t lamount = FileArray_content_lamount(farray);
+	lnsize = ln_size(lamount);
+	ln = 1;
+
+	if (opta.amount == 0) return;
+
+	parsers_array = (OptParsers) {
+		.parsers = (OptParser*)malloc(opta.amount * sizeof(OptParser)),
+		.amount = opta.amount
+	};
+
 	for (size_t i = 0; i < opta.amount; i++) {
 		OptParser parser = get_parser(opta.options[i]);
+		parsers_array.parsers[i] = parser;
+	}
+}
+
+void clear_parsers() {
+	if (parsers_array.parsers != NULL)
+		free(parsers_array.parsers);
+}
+
+struct ParseResult parse(struct FileArray farray) {
+	size_t n = FileArray_stdin_File_index(farray);
+	struct FileArray res = FileArray_dupn(farray, n);
+	if (n == 0) return (struct ParseResult) {
+		.fparsed = res,
+		.amount = n
+	};
+
+	for (size_t i = 0; i < parsers_array.amount; i++) {
+		OptParser parser = parsers_array.parsers[i];
 		if (parser == NULL) continue;
 
 		struct FileArray pfarray = parser(res);
 		free_FileArray_files(res);
 		res = pfarray;
 	}
-	return res;
+
+	return (struct ParseResult) {
+		.fparsed = res,
+		.amount = n
+	};
 }

@@ -148,3 +148,8 @@ void free_OptArray_options(struct OptArray opta) {
 	if (opta.options != NULL) free(opta.options);
 }
 
+int OptArray_contain(struct OptArray opta, int opt) {
+	for (size_t i = 0; i < opta.amount; i++)
+		if (opta.options[i] == opt) return 1;
+	return 0;
+}

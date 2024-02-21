@@ -3,6 +3,8 @@
 
 #include <stdio.h>
 
+#define STDIN_STR ""
+
 struct StrArray {
 	char **strs;
 	size_t amount;

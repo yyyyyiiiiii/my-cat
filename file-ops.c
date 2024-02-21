@@ -1,11 +1,12 @@
 #include "file-ops.h"
+#include "str-array.h"
 
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 
 void free_File_content(struct File file) {
-	free(file.content);
+	if (file.size) free(file.content);
 }
 
 void free_FileArray_files(struct FileArray farray) {
@@ -17,8 +18,27 @@ void free_FileArray_files(struct FileArray farray) {
 	free(farray.files);
 }
 
+struct File get_stdin_File() {
+	return (struct File) {
+		.content = strdup(STDIN_STR),
+		.size = -1
+	};
+}
+
+int is_stdin_File(struct File file) {
+	return strcmp(file.content, STDIN_STR) == 0 & file.size == -1;
+}
+
+size_t FileArray_stdin_File_index(struct FileArray farray) {
+	for (size_t i = 0; i < farray.amount; i++)
+		if (is_stdin_File(farray.files[i])) return i;
+	return farray.amount;
+}
+
 struct File get_file(const char *fname) {
-	FILE *fstream = fopen(fname, "r");
+	if (strcmp(fname, STDIN_STR) == 0)
+		return get_stdin_File();
+	FILE *fstream = fopen(fname, "rb");
 	if (fstream == NULL) { // I guess it's fatality
 		fprintf(stderr, "%s: ", fname);
 		perror(""); // no way for cooking
@@ -84,6 +104,7 @@ size_t File_content_ch_amount(struct File file, char _ch) {
 }
 
 size_t File_content_lamount(struct File file) {
+	if (is_stdin_File(file)) return 0; // ignore
 	return File_content_ch_amount(file, '\n');
 }
 
@@ -93,8 +114,10 @@ size_t File_content_tamount(struct File file) {
 
 size_t FileArray_content_lamount(struct FileArray farray) { // lamount -> lines amount
 	size_t amount = 0;
-	for (size_t i = 0; i < farray.amount; i++)
-		amount += File_content_lamount(farray.files[i]);
+	for (size_t i = 0; i < farray.amount; i++) {
+		struct File file = farray.files[i];
+		amount += File_content_lamount(file);
+	}
 
 	return amount;
 }
@@ -110,6 +133,15 @@ size_t FileArray_content_no_nl_end_amount(struct FileArray farray) { // lamount 
 }
 
 struct File File_dup(struct File file) {
+	if (is_stdin_File(file)) return get_stdin_File();
+
+	if (!file.size) {
+		return (struct File) {
+			.content = NULL,
+			.size = 0
+		};
+	}
+
 	struct File dup = {
 		.content = (char*)malloc(file.size),
 		.size = file.size
@@ -130,16 +162,26 @@ void File_cpy(struct File f2, struct File f1) {
 	}
 }
 
-struct FileArray FileArray_dup(struct FileArray farray) {
+struct FileArray FileArray_dupn(struct FileArray farray, size_t n) {
+	if (n == 0) {
+		return (struct FileArray) {
+			.files = NULL,
+			.amount = 0
+		};
+	}
 	struct FileArray dup = {
-		.files = (struct File*)malloc(farray.amount * sizeof(struct File)),
-		.amount = farray.amount
+		.files = (struct File*)malloc(n * sizeof(struct File)),
+		.amount = n
 	};
 
-	for (size_t i = 0; i < farray.amount; i++)
+	for (size_t i = 0; i < n; i++)
 		dup.files[i] = File_dup(farray.files[i]);
 
 	return dup;
+}
+
+struct FileArray FileArray_dup(struct FileArray farray) {
+	return FileArray_dupn(farray, farray.amount);
 }
 
 void print_File(struct File file) {
@@ -152,5 +194,52 @@ void print_FileArray(struct FileArray farray) {
 	for (size_t i = 0; i < farray.amount; i++) {
 		print_File(farray.files[i]);
 	}
+}
+
+struct FileArray FileArray_content_from_stdin() {
+	struct FileArray farray = {
+		.files = NULL,
+		.amount = 0
+	};
+
+	for (int i = 0; !feof(stdin); i++) {
+		char buff[255] = {0};
+		while(i < 255 && !feof(stdin)) {
+			buff[i++] = getc(stdin);
+		}
+
+		if (feof(stdin)) i--;
+		if (i == 0) return farray;
+
+		struct File file = {
+			.content = (char*)malloc(i),
+			.size = i
+		};
+
+		char *res = memcpy(file.content, buff, i);
+		if (res != file.content) {
+			fprintf(stderr, "Failed to read from stdin\n");
+			exit(-1);
+		}
+
+		farray.files = (struct File*)realloc(farray.files, farray.amount + 1);
+		farray.files[farray.amount++] = file;
+	}
+	rewind(stdin);
+	return farray;
+}
+
+struct FileArray FileArray_combine(struct FileArray ffa, struct FileArray sfa) {
+	struct FileArray facombo;
+	facombo.amount = ffa.amount + sfa.amount;
+	facombo.files = (struct File*)malloc(facombo.amount * sizeof(struct File));
+	size_t i = 0;
+	for (size_t j = 0; j < ffa.amount; j++)
+		facombo.files[i++] = File_dup(ffa.files[j]);
+
+	for (size_t j = 0; j < sfa.amount; j++)
+		facombo.files[i++] = File_dup(sfa.files[j]);
+
+	return facombo;
 }
 

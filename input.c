@@ -11,7 +11,7 @@ int files_amount(struct StrArray unparsed) {
 	for (int i = 0; i < unparsed.amount; i++) {
 		const char *pfile = unparsed.strs[i]; // pfile -> potential file
 
-		if (pfile[0] != '-') {
+		if (pfile[0] != '-' || strcmp(pfile, "-") == 0) {
 			amount++;
 			continue;
 		}
@@ -33,6 +33,11 @@ void get_fnames(struct StrArray unparsed, struct StrArray fnames) {
 			continue;
 		}
 
+		if (strcmp(pfile, "-") == 0) {
+			fnames.strs[id++] = strdup(STDIN_STR);
+			continue;
+		}
+
 		if (strcmp(pfile, "--") == 0)
 			is100 = 1;
     }
@@ -43,7 +48,7 @@ void get_Input_opts(struct StrArray unparsed, struct StrArray opts) {
 		char *popt = unparsed.strs[i];
 		if (strcmp(popt, "--") == 0)
 			break;
-		if (popt[0] == '-')
+		if (popt[0] == '-' && popt[1] != '\0')
 			opts.strs[id++] = strdup(popt);
 	}
 }

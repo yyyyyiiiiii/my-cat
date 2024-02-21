@@ -33,7 +33,16 @@ size_t FileArray_content_no_nl_end_amount(struct FileArray);
 
 struct File File_dup(struct File);
 struct FileArray FileArray_dup(struct FileArray);
+struct FileArray FileArray_dupn(struct FileArray, size_t);
 
 void File_cpy(struct File, struct File);
+
+size_t FileArray_stdin_File_index(struct FileArray);
+
+int is_stdin_File(struct File);
+struct File get_stdin_File();
+
+struct FileArray FileArray_content_from_stdin();
+struct FileArray FileArray_combine(struct FileArray, struct FileArray);
 
 #endif // !FILE_OPS

@@ -14,5 +14,7 @@ struct OptArray {
 struct OptArray get_OptArray(struct StrArray);
 void free_OptArray_options(struct OptArray);
 
+int OptArray_contain(struct OptArray, int);
+
 #endif // !OPT_ARRAY
 
